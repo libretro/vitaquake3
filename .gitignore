@@ -7,6 +7,7 @@
 *.vpk
 *.pk3
 *.zip
+*.so
 datafiles/*
 
 # Windows image file caches
