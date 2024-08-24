@@ -24,6 +24,14 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 backEndData_t	*backEndData;
 backEndState_t	backEnd;
 
+void vglVertexPointerMapped(const GLvoid *pointer);
+void vglTexCoordPointerMapped(const GLvoid *pointer);
+void vglColorPointerMapped(GLenum type, const GLvoid *pointer);
+void vglDrawObjects(GLenum mode, GLsizei count, GLboolean implicit_wvp);
+void vglTexCoordPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+void vglVertexPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+void vglColorPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+
 
 static float	s_flipMatrix[16] = {
 	// convert from our coordinate system (looking down X)

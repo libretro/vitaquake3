@@ -1593,5 +1593,13 @@ size_t RE_SaveJPGToBuffer(byte *buffer, size_t bufSize, int quality,
 void RE_TakeVideoFrame( int width, int height,
 		byte *captureBuffer, byte *encodeBuffer, qboolean motionJpeg );
 
+void vglVertexPointerMapped(const GLvoid *pointer);
+void vglTexCoordPointerMapped(const GLvoid *pointer);
+void vglColorPointerMapped(GLenum type, const GLvoid *pointer);
+void vglDrawObjects(GLenum mode, GLsizei count, GLboolean implicit_wvp);
+void vglTexCoordPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+void vglVertexPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+void vglColorPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer);
+
 
 #endif //TR_LOCAL_H
