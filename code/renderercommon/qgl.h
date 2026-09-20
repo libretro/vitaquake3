@@ -132,6 +132,11 @@ extern uint16_t *indices;
 #define APIENTRY
 #endif
 
+#if defined(__LIBRETRO__) && defined(__MINGW32__) && defined(__i386__)
+#  undef APIENTRY
+#  define APIENTRY
+#endif
+
 extern void vglVertexAttribPointerMapped(int id, void* ptr);
 
 extern  void ( APIENTRY * qglBlendFunc )(GLenum sfactor, GLenum dfactor);
