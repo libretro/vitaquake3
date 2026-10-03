@@ -2,7 +2,9 @@
 #include "../libretro-common/include/retro_dirent.h"
 #include "../libretro-common/include/features/features_cpu.h"
 #include "../libretro-common/include/file/file_path.h"
+#ifndef RENDERER_GL2
 #include "../libretro-common/include/glsym/glsym.h"
+#endif
 #include "../libretro-common/include/net/net_compat.h"
 #include "../libretro-common/include/net/net_socket.h"
 #include "../libretro-common/include/streams/file_stream.h"
@@ -12,12 +14,18 @@
 #include "sys_loadlib.h"
 #include "../qcommon/q_shared.h"
 #include "sys_local.h"
+#ifdef RENDERER_GL2
+#include "../renderercommon_gl2/tr_common.h"
+#else
 #include "../renderercommon/tr_common.h"
+#endif
 #include "../qcommon/qcommon.h"
 #include "../client/client.h"
 #include "../client/snd_local.h"
 
+#ifndef RENDERER_GL2
 #include <glsm/glsm.h>
+#endif
 
 #define SAMPLE_RATE_DEFAULT	48000
 /* One-frame linear output buffer, in stereo sample-pairs. Sized for the
@@ -75,6 +83,10 @@ int scr_width = 960, scr_height = 544;
 
 char *BASEGAME;
 
+/* The OpenGL 1 renderer (code/renderergl1) gets its functions and its
+ * immediate-mode batch buffers from here. The OpenGL 2 one (RENDERER_GL2)
+ * loads its own, in glimp_gl2.c. */
+#ifndef RENDERER_GL2
 void ( APIENTRY * qglBlendFunc )(GLenum sfactor, GLenum dfactor);
 void ( APIENTRY * qglTexImage2D )(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels);
 void ( APIENTRY * qglTexParameteri )(GLenum target, GLenum pname, GLint param);
@@ -149,11 +161,14 @@ typedef struct api_entry{
 } api_entry;
 
 api_entry funcs[GL_FUNCS_NUM];
+#endif
+
 
 char g_rom_dir[1024], g_pak_path[1024], g_save_dir[1024];
 
 extern struct retro_hw_render_callback hw_render;
 
+#ifndef RENDERER_GL2
 void vglVertexPointerMapped(const GLvoid *pointer) {
 	qglVertexPointer(3, GL_FLOAT, 0, pointer);
 }
@@ -181,6 +196,8 @@ void vglVertexPointer(GLint size, GLenum type, GLsizei stride, GLuint count, con
 void vglColorPointer(GLint size, GLenum type, GLsizei stride, GLuint count, const GLvoid *pointer) {
 	vglColorPointerMapped(type, pointer);
 }
+
+#endif
 
 static retro_log_printf_t log_cb;
 static retro_video_refresh_t video_cb;
@@ -333,6 +350,7 @@ gp_layout_t *gp_layoutp = NULL;
 
 static bool context_needs_reinit = true;
 
+#ifndef RENDERER_GL2
 static bool initialize_gl()
 {
 	funcs[0].ptr  = qglTexImage2D         = (void (*)(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const GLvoid *))hw_render.get_proc_address ("glTexImage2D");
@@ -402,6 +420,8 @@ static bool initialize_gl()
 	
 	return true;
 }
+
+#endif
 
 static void context_destroy() 
 {
@@ -478,6 +498,75 @@ static bool first_reset = true;
 
 extern void CL_Vid_Restart_f( void );
 
+#ifdef RENDERER_GL2
+/* The OpenGL 2 renderer runs on desktop OpenGL 3.2 core or on OpenGL ES 3/2,
+ * whichever the frontend gives, with nothing between it and the context: it
+ * keeps its own idea of the GL state, so the frontend is asked for a shared
+ * context, where it keeps its state apart from the core's. */
+struct retro_hw_render_callback hw_render;
+
+GLuint GLimp_DefaultFramebuffer(void)
+{
+	return hw_render.get_current_framebuffer ? (GLuint)hw_render.get_current_framebuffer() : 0;
+}
+
+static void context_reset() {
+	if (!context_needs_reinit)
+		return;
+
+	if (!first_reset)
+		CL_Vid_Restart_f();
+	first_reset = false;
+	context_needs_reinit = false;
+}
+
+bool initialize_opengl(void)
+{
+	static const struct { enum retro_hw_context_type type; unsigned major, minor; } contexts[] = {
+#ifdef HAVE_OPENGLES
+		{ RETRO_HW_CONTEXT_OPENGLES3, 3, 0 },
+		{ RETRO_HW_CONTEXT_OPENGLES2, 2, 0 },
+#else
+		{ RETRO_HW_CONTEXT_OPENGL_CORE, 3, 2 },
+		{ RETRO_HW_CONTEXT_OPENGL, 2, 1 },
+#endif
+	};
+	unsigned i;
+
+	for (i = 0; i < sizeof(contexts) / sizeof(contexts[0]); i++)
+	{
+		memset(&hw_render, 0, sizeof(hw_render));
+		hw_render.context_type       = contexts[i].type;
+		hw_render.version_major      = contexts[i].major;
+		hw_render.version_minor      = contexts[i].minor;
+		hw_render.context_reset      = context_reset;
+		hw_render.context_destroy    = context_destroy;
+		hw_render.depth              = true;
+		hw_render.stencil            = true;
+		hw_render.bottom_left_origin = true;
+		if (environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER, &hw_render))
+		{
+			log_cb(RETRO_LOG_INFO, "vitaQuakeIII: OpenGL%s %u.%u context requested\n",
+#ifdef HAVE_OPENGLES
+				" ES",
+#else
+				contexts[i].type == RETRO_HW_CONTEXT_OPENGL_CORE ? " core" : "",
+#endif
+				contexts[i].major, contexts[i].minor);
+			libretro_shared_context = environ_cb(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, NULL);
+			return true;
+		}
+	}
+
+	log_cb(RETRO_LOG_ERROR, "vitaQuakeIII: the frontend gave no OpenGL context.\n");
+	return false;
+}
+
+void destroy_opengl(void)
+{
+	libretro_shared_context = false;
+}
+#else
 static void context_reset() { 
 	if (!context_needs_reinit)
 		return;
@@ -535,6 +624,8 @@ void destroy_opengl(void)
 
    libretro_shared_context = false;
 }
+
+#endif
 
 /* con.c */
 
@@ -1192,6 +1283,7 @@ static void core_teardown(void)
       core_initialized = false;
    }
 
+#ifndef RENDERER_GL2
    /* Free the persistent immediate-mode batch buffers (allocated in GLimp_Init). */
    if (indices)            { free(indices);            indices            = NULL; }
    if (gVertexBufferPtr)   { free(gVertexBufferPtr);   gVertexBufferPtr   = NULL; }
@@ -1201,6 +1293,7 @@ static void core_teardown(void)
    gVertexBuffer   = NULL;
    gColorBuffer    = NULL;
    gTexCoordBuffer = NULL;
+#endif
 
    if (BASEGAME) { free(BASEGAME); BASEGAME = NULL; }
 
@@ -1514,11 +1607,24 @@ bool first_boot = true;
 
 void retro_run(void)
 {
+#ifdef RENDERER_GL2
+	/* Draw into the frontend's framebuffer. The renderer binds it itself when
+	 * it presents from its own framebuffers, but without those - OpenGL ES
+	 * here - it draws into whatever is bound, which in the core's shared
+	 * context is that context's own default framebuffer, shown nowhere: the
+	 * picture was black. Binding it through the renderer keeps the renderer's
+	 * idea of what is bound true. */
+	{
+		extern void GLimp_BindDefaultFramebuffer(void);
+		GLimp_BindDefaultFramebuffer();
+	}
+#else
    if (!libretro_shared_context)
       glsm_ctl(GLSM_CTL_STATE_BIND, NULL);
 	qglBindFramebuffer(RARCH_GL_FRAMEBUFFER, hw_render.get_current_framebuffer());
 	qglEnable(GL_TEXTURE_2D);
 	qglEnableClientState(GL_VERTEX_ARRAY);
+#endif
 
 	/* Advance the frame clock by exactly one frame quantum and publish it to
 	 * com_frameTime, the single engine clock. Integer ms/frame with a remainder
@@ -1589,8 +1695,10 @@ void retro_run(void)
 		update_variables(false);
 	
 	Com_Frame();
+#ifndef RENDERER_GL2
    if (!libretro_shared_context)
       glsm_ctl(GLSM_CTL_STATE_UNBIND, NULL);
+#endif
 	
 	audio_process();
 	audio_callback();
@@ -2264,6 +2372,13 @@ extern vidmode_t r_vidModes[];
 
 uint32_t cur_width;
 
+#ifdef RENDERER_GL2
+/* GLimp_Init for the OpenGL 2 renderer is in glimp_gl2.c. */
+void GLimp_EndFrame( void )
+{
+	video_cb(RETRO_HW_FRAME_BUFFER_VALID, scr_width, scr_height, 0);
+}
+#else
 void GLimp_Init( qboolean coreContext)
 {
 	if (r_mode->integer < 0) r_mode->integer = 3;
@@ -2344,6 +2459,7 @@ void GLimp_EndFrame( void )
 	gColorBuffer    = gColorBufferPtr;
 	gTexCoordBuffer = gTexCoordBufferPtr;
 }
+#endif
 
 /* input.c */
 

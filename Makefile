@@ -60,6 +60,14 @@ ifeq ($(platform), unix)
       SHARED := -shared -Wl,--version-script=$(CORE_DIR)/link.T -Wl,--no-undefined
    endif
    LDFLAGS += -lGL
+else ifeq ($(platform), webos)
+   # LG webOS: Linux with OpenGL ES only, so the OpenGL ES renderer
+   # (Makefile.common) and no libGL to link.
+   EXT ?= so
+   TARGET := $(TARGET_NAME)_libretro.$(EXT)
+   fpic := -fPIC
+   SHARED := -shared -Wl,--version-script=$(CORE_DIR)/link.T -Wl,--no-undefined
+   HAVE_GLES = 1
 else ifeq ($(platform), linux-portable)
    TARGET := $(TARGET_NAME)_libretro.$(EXT)
    fpic := -fPIC -nostdlib
@@ -161,6 +169,12 @@ OBJECTS := $(SOURCES_C:.c=.o)
 
 COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
 COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/' | sed -e 's/^arm.*/arm/')
+# Cross-compiled: the build host's machine is not the target's
+ifeq ($(WEBOS_ARCH), armv7a)
+  COMPILE_ARCH=arm
+else ifeq ($(WEBOS_ARCH), aarch64)
+  COMPILE_ARCH=aarch64
+endif
 
 ifeq ($(COMPILE_PLATFORM),cygwin)
   PLATFORM=mingw32
@@ -206,12 +220,12 @@ endif
 CFLAGS   += -Wall -D__LIBRETRO__ $(fpic) -DARCH_STRING=\"$(COMPILE_ARCH)\" -DNO_VM_COMPILED -DBOTLIB -DPRODUCT_VERSION=\"1.36_GIT_ba68b99c-2018-01-23\" -DUSE_INTERNAL_JPEG
 CXXFLAGS += -Wall -D__LIBRETRO__ $(fpic) -fpermissive -fno-rtti -fno-exceptions -std=gnu++11
 
-ifeq ($(platform), unix)
+ifneq (,$(filter unix webos,$(platform)))
 CFLAGS += -std=gnu99
 else
 CFLAGS += -std=c99
 endif
-CFLAGS     += $(INCFLAGS)
+CFLAGS     += $(INCFLAGS) $(COREDEFINES)
 CXXFLAGS   += $(INCFLAGS)
 
 all: $(TARGET)

@@ -1,0 +1,16 @@
+const char *fallbackShader_greyscale_fp =
+"uniform sampler2D u_TextureMap;\n"
+"uniform float     u_Greyscale;\n"
+"varying vec2      var_TexCoords;\n"
+"\n"
+"// From Rec. 709-1 4.2 \"Derivation of luminance signal\"\n"
+"const vec3 LUMA = vec3(0.2125, 0.7154, 0.0721);\n"
+"\n"
+"void main() {\n"
+"    vec4 color = texture2D(u_TextureMap, var_TexCoords);\n"
+"    if (u_Greyscale > 0.0) {\n"
+"        float y = dot(color.rgb, LUMA);\n"
+"        color.rgb = mix(color.rgb, vec3(y), clamp(u_Greyscale, 0.0, 1.0));\n"
+"    }\n"
+"    gl_FragColor = color;\n"
+"}\n";

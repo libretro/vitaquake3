@@ -1,22 +1,43 @@
 ifeq ($(LIBRETRO_COMM_DIR),)
 LIBRETRO_COMM_DIR  = $(CORE_DIR)/code/libretro-common
 endif
-SOURCES    := 	$(CORE_DIR)/code/renderercommon \
+# The renderer. renderergl1 is fixed-function OpenGL 1.x and needs a desktop
+# compatibility context. RENDERER_GL2=1 builds ioquake3's OpenGL 2 renderer
+# instead, which runs on desktop OpenGL 3.2 core or OpenGL ES 2/3 - HAVE_GLES=1
+# implies it, since OpenGL ES has no fixed-function pipeline at all.
+ifeq ($(HAVE_GLES), 1)
+   RENDERER_GL2 = 1
+   COREDEFINES += -DHAVE_OPENGLES
+endif
+ifeq ($(RENDERER_GL2), 1)
+   RENDERER_DIRS := $(CORE_DIR)/code/renderercommon_gl2 \
+					$(CORE_DIR)/code/renderergl2 \
+					$(CORE_DIR)/code/renderergl2/glsl_c
+   RENDERER_INCS := $(CORE_DIR)/code/renderercommon_gl2 \
+					$(CORE_DIR)/code/renderercommon_gl2/glheaders \
+					$(CORE_DIR)/code/renderergl2
+   COREDEFINES += -DRENDERER_GL2 -DUSE_INTERNAL_SDL_HEADERS
+else
+   RENDERER_DIRS := $(CORE_DIR)/code/renderercommon \
+					$(CORE_DIR)/code/renderergl1
+   RENDERER_INCS := $(CORE_DIR)/code/renderercommon \
+					$(CORE_DIR)/code/renderergl1
+endif
+
+SOURCES    := 	$(RENDERER_DIRS) \
 					$(CORE_DIR)/code/qcommon \
 					$(CORE_DIR)/code/botlib \
 					$(CORE_DIR)/code/client \
 					$(CORE_DIR)/code/server \
-					$(CORE_DIR)/code/renderergl1 \
 					$(CORE_DIR)/code/libretro \
 					$(CORE_DIR)/code/sys \
 					$(CORE_DIR)/code/jpeg-8c \
 					$(CORE_DIR)/code/zlib
-INCLUDES   :=  $(CORE_DIR)/code/renderercommon \
+INCLUDES   :=  $(RENDERER_INCS) \
 					$(CORE_DIR)/code/qcommon \
 					$(CORE_DIR)/code/botlib \
 					$(CORE_DIR)/code/client \
 					$(CORE_DIR)/code/server \
-					$(CORE_DIR)/code/renderergl1 \
 					$(CORE_DIR)/code/libretro \
 					$(CORE_DIR)/code/sys \
 					$(CORE_DIR)/code/jpeg-8c \
@@ -42,9 +63,14 @@ SYSTEM = 	$(LIBRETRO_COMM_DIR)/file/retro_dirent.c \
 				$(LIBRETRO_COMM_DIR)/streams/file_stream.c \
 				$(LIBRETRO_COMM_DIR)/vfs/vfs_implementation.c \
 				$(LIBRETRO_COMM_DIR)/net/net_compat.c \
-				$(LIBRETRO_COMM_DIR)/net/net_socket.c \
-				$(LIBRETRO_COMM_DIR)/glsym/rglgen.c \
+				$(LIBRETRO_COMM_DIR)/net/net_socket.c
+
+# glsm and its symbol loader serve renderergl1; renderergl2 loads its own
+# functions (code/libretro/glimp_gl2.c).
+ifneq ($(RENDERER_GL2), 1)
+SYSTEM += 	$(LIBRETRO_COMM_DIR)/glsym/rglgen.c \
 				$(LIBRETRO_COMM_DIR)/glsym/glsym_gl.c \
 				$(LIBRETRO_COMM_DIR)/glsm/glsm.c
+endif
 				
 SOURCES_C  += $(SYSTEM)
