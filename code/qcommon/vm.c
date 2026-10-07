@@ -591,6 +591,20 @@ vmHeader_t *VM_LoadQVM( vm_t *vm, qboolean alloc, qboolean unpure)
 =================
 VM_Restart
 
+Load external vm/ui.qvm when not playing the base game.
+=================
+*/
+static qboolean VM_UseEmbeddedUI( const char *module )
+{
+	return !Q_stricmp( module, "ui" )
+		&& !Q_stricmp( FS_GetCurrentGameDir(), "baseq3" )
+		&& !FS_LooseFileExists( "vm/ui.qvm" );
+}
+
+/*
+=================
+VM_Restart
+
 Reload the data, but leave everything else in place
 This allows a server to do a map_restart without changing memory allocation
 
@@ -622,9 +636,8 @@ vm_t *VM_Restart(vm_t *vm, qboolean unpure)
 	/* If this is the embedded ui VM (loaded with no searchPath and no loose
 	 * override on disk), reload it from the embedded image rather than letting
 	 * VM_LoadQVM fall through to a pak'd copy. */
-	if ( !Q_stricmp( vm->name, "ui" )
-			&& vm->searchPath == NULL
-			&& !FS_LooseFileExists( "vm/ui.qvm" )
+	if ( vm->searchPath == NULL
+			&& VM_UseEmbeddedUI( vm->name )
 			&& VM_ArmEmbeddedUI() )
 	{
 		header = VM_LoadQVM(vm, qfalse, unpure);
@@ -696,12 +709,12 @@ vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *),
 
 	/* The core embeds a baseq3 ui.qvm (with the windowed/fullscreen menu item
 	 * removed). Use it for the "ui" module unless the user has supplied a loose
-	 * baseq3/vm/ui.qvm on disk, which overrides the embedded copy. Bytecode
-	 * interpreter only (the embedded image is plain vq3 bytecode); a native dll
-	 * request still goes through the normal search. */
+	 * baseq3/vm/ui.qvm on disk, which overrides the embedded copy, or is not
+      * playing the base game. Bytecode interpreter only (the embedded image
+      * is plain vq3 bytecode); a native dll request still goes through the
+      * normal search. */
 	if ( interpret != VMI_NATIVE
-			&& !Q_stricmp( module, "ui" )
-			&& !FS_LooseFileExists( "vm/ui.qvm" )
+			&& VM_UseEmbeddedUI( module )
 			&& VM_ArmEmbeddedUI() )
 	{
 		vm->searchPath = NULL;
